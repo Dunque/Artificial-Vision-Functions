@@ -41,37 +41,6 @@ def equalizeIntensity (inImage, nBins=256):
     return out.reshape(inImage.shape)
 
 # 3.2 -----------------------------------------------------------------
-# def filterImage (inImage, kernel):
-
-#     #kernel cross correlation
-#     #kernel = np.flipud(np.fliplr(kernel))
-
-#     M = inImage.shape[0]
-#     N = inImage.shape[1]
-
-#     if (kernel.ndim == 1):
-#         m = kernel.shape[0]
-#         n = 1
-#     else:
-#         m = kernel.shape[0]
-#         n = kernel.shape[1]
-
-#     outImage = np.zeros((int(M - (m-1)), int(N - (n-1))))
-
-#     for y in range(inImage.shape[1]):
-#         if y > inImage.shape[1] - n:
-#             break
-
-#         for x in range(inImage.shape[0]):
-#             if x > inImage.shape[0] - m:
-#                 break
-#             try:
-#                 outImage[x, y] = (kernel * inImage[x: x + m, y: y + n]).sum()
-#             except:
-#                 break
-
-#     return outImage
-
 def filterImage(inImage, kernel):
     
     M = inImage.shape[0]
@@ -143,10 +112,10 @@ def gaussian_blur(inImage, kernel_size, verbose=False):
 def main():
 
     #Import files
-    filename = os.path.join(imgPath, 'bfly.jpg')
-    #bfly = io.imread(filename, as_gray=True)
-    original = data.astronaut()
-    bfly = rgb2gray(original)
+    filename = os.path.join(imgPath, 'bfly.jpeg')
+    bfly = io.imread(filename, as_gray=True)
+    # original = data.astronaut()
+    # bfly = rgb2gray(original)
 
     #bfly = adjustIntensity(bfly, [10,100], [0,1])
 
@@ -164,9 +133,9 @@ def main():
 
     #bfly = gaussian_blur(bfly, 5, False)
 
-    bfly = bfly / bfly.max() #normalizes bfly in range 0 - 255
-    bfly = 255 * bfly
-    bfly = bfly.astype(np.uint8)
+    # bfly = bfly / bfly.max() #normalizes bfly in range 0 - 255
+    # bfly = 255 * bfly
+    # bfly = bfly.astype(np.uint8)
     io.imsave(os.path.join(imgPathOut, 'bflyOut.jpg'), bfly)
 
 
