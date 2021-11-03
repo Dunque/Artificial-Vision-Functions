@@ -80,6 +80,41 @@ def gaussKernel1D (sigma):
 
     return result/sum(result)
 
+
+def gaussianFilter (inImage, sigma):
+
+    gausskernel = gaussKernel1D(sigma)
+
+    print(gausskernel)
+
+    image = filterImage(inImage, gausskernel)
+
+    image2 = filterImage(image, np.transpose(gausskernel))
+
+    return image2
+
+
+def medianFilter (inImage, filterSize):
+    indexer = filterSize // 2
+    window = [
+        (i, j)
+        for i in range(-indexer, filterSize-indexer)
+        for j in range(-indexer, filterSize-indexer)
+    ]
+    index = len(window) // 2
+    for i in range(len(inImage)):
+        for j in range(len(inImage[0])):
+            inImage[i][j] = sorted(
+                0 if (
+                    min(i+a, j+b) < 0
+                    or len(inImage) <= i+a
+                    or len(inImage[0]) <= j+b
+                ) else inImage[i+a][j+b]
+                for a, b in window
+            )[index]
+    return inImage  
+
+
 #---------------------------------------------------------------------------
 
 def dnorm(x, mu, sd):
@@ -125,17 +160,15 @@ def main():
                         [-1, 8, -1], 
                        [-1, -1, -1]])
     
-    bfly = filterImage(bfly, kernel)
+    #bfly = filterImage(bfly, kernel)
 
-    #print(gaussKernel1D(2))
+    #bfly = gaussianFilter(bfly,1)
 
-    #bfly = gaussianFilter(bfly, 3)
+    bfly = medianFilter(bfly,9)
 
-    #bfly = gaussian_blur(bfly, 5, False)
-
-    # bfly = bfly / bfly.max() #normalizes bfly in range 0 - 255
-    # bfly = 255 * bfly
-    # bfly = bfly.astype(np.uint8)
+    bfly = bfly / bfly.max()
+    io.imshow(bfly) 
+    io.show()
     io.imsave(os.path.join(imgPathOut, 'bflyOut.jpg'), bfly)
 
 
