@@ -241,9 +241,23 @@ def closing (inImage, SE, center=[]):
     return outImage
 
 
-def hit_or_miss (inImage, objSEj, bgSE, center=[]):
+def hit_or_miss (inImage, objSE, bgSE, center=[]):
 
-    
+    B = inImage
+    Bc = 1 - inImage
+
+    if(objSE.len != bgSE.len or objSE.any() == bgSE.any()):
+        raise "Error: objSE and bgSE must not share ones in the same positions"
+
+    out1 = erode (B, objSE, center)
+    out2 = erode (Bc, bgSE, center)
+
+    outInd = np.intersect1d(out1, out2, return_indices=True)
+
+    outImage = np.zeros(inImage.shape)
+
+    for i in outInd:
+        outImage[i] = 1
 
     return outImage
 # 3.4 -----------------------------------------------------------------
