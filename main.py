@@ -56,23 +56,25 @@ def filterImage(inImage, kernel):
         m = kernel.shape[0]
         n = kernel.shape[1]
  
-    output = np.zeros(inImage.shape)
+    outImage = np.zeros(inImage.shape)
  
     pad_height = int((m - 1) / 2)
     pad_width = int((n - 1) / 2)
  
     padded_image = np.zeros((M + (2 * pad_height), N + (2 * pad_width)))
- 
+
+    #We copy the image to the padded one
     padded_image[pad_height:padded_image.shape[0] - pad_height, pad_width:padded_image.shape[1] - pad_width] = inImage
  
     for row in range(M):
         for col in range(N):
-            output[row, col] = np.sum(kernel * padded_image[row:row + m, col:col + n])
+            outImage[row, col] = np.sum(kernel * padded_image[row:row + m, col:col + n])
  
-    return output
+    return outImage
 
 
 def gaussKernel1D (sigma):
+
     N = int(2*np.ceil(3*sigma)+ 1)
 
     result = np.zeros(N)
@@ -95,6 +97,9 @@ def gaussianFilter (inImage, sigma):
 
 
 def medianFilter (inImage, filterSize):
+        
+    M = inImage.shape[0]
+    N = inImage.shape[1]
 
     indexer = filterSize // 2
 
@@ -104,19 +109,16 @@ def medianFilter (inImage, filterSize):
         for j in range(-indexer, filterSize-indexer)
     ]
     index = len(window) // 2
-
-    for i in range(len(inImage)):
-        for j in range(len(inImage[0])):
-            inImage[i][j] = sorted(
-                0 if (
-                    min(i+a, j+b) < 0
-                    or len(inImage) <= i+a
-                    or len(inImage[0]) <= j+b
-                ) else inImage[i+a][j+b]
-                for a, b in window
-            )[index]
-
-    return inImage  
+ 
+    outImage = np.zeros(inImage.shape)
+ 
+    for row in range(M):
+        for col in range(N):
+            outImage[row, col] = sorted(
+                0 if (min(row+a, col+b) < 0 or len(inImage) <= row+a or len(inImage[0]) <= col+b) 
+                else inImage[row+a][col+b] for a, b in window)[index]
+ 
+    return outImage
 
 
 def highBoost (inImage, A, method, param):
@@ -128,78 +130,122 @@ def highBoost (inImage, A, method, param):
     else:
         raise Exception("Invalid method, it should be gaussian or median")
 
-    if A>=0:
-        outImage = A * inImage - smooth
-    else:
-        outImage = (A-1) * inImage + inImage - smooth
+    outImage = (A-1) * inImage + inImage - smooth
 
     return outImage
 
 # 3.3 -----------------------------------------------------------------
+def erode (inImage, SE, center=[]):
 
-def erode(im,se):
-    rows,columns = im.shape[0], im.shape[1]
-    #Initialize counters (Just to keep track)
-    fit = 0
-    hit = 0
-    miss = 0
+    M = inImage.shape[0]
+    N = inImage.shape[1]
+    
+    if (SE.ndim == 1):
+        P = SE.shape[0]
+        Q = 1
+    else:
+        P = SE.shape[0]
+        Q = SE.shape[1]
 
-    #Create a copy of the image to modified it´s pixel values
-    ero = np.copy(im)
-    #Specify kernel size (w*w)
-    w = 3
+    if (not center):
+        center = [int(np.floor(P/2) + 1), int(np.floor(Q/2) + 1)]
+    print(center)
 
-    #
-    for i in range(rows-w-1):
-        for j in range(columns-w-1):
-            #Get a region (crop) of the image equal to kernel size
-            crop = im[i:w+i,j:w+j]
-            #Convert region of image to an array
-            img = np.array(crop)
+    centerDiffRow = np.floor(P/2) + 1 - center[0]
+    centerDiffCol = np.floor(Q/2) + 1 - center[1]
 
-            #Get center
-            a = math.floor(w/2)
-            b = math.floor(w/2)
-            
-            #Initialize counters 
-            matches = 0
-            blacks = 0
+    print(centerDiffRow)
+    print(centerDiffCol)
 
-            #Count number of black pixels (0) and value matches between the two matrix
-            for x in range(w):
-                for y in range(w):
-                    #Count number of black pixels (0)
-                    if(img[x][y] == 0):
-                        blacks = blacks+1
-                        #Count number of matching pixel values between the two matrix   
-                        if (img[x][y] == se[x][y]):         
-                            matches = matches+1
+    outImage = np.zeros(inImage.shape)
+ 
+    pad_height = int((P - 1) / 2)
+    pad_width = int((Q - 1) / 2)
+ 
+    padded_image = np.zeros((M + (2 * pad_height), N + (2 * pad_width)))
 
-            #Test if structuring element fit crop image pixels
-            #If fit it does nothing because center pixel is already black
-            if(matches > 0):
-                if(matches == blacks):
-                    #Touch
-                    fit = fit + 1
-                    pass
-                #Test if structuring element hit crop image pixels
-                #If hit change ero center pixel to black
-                elif(matches < blacks):
-                    #Hit
-                    hit = hit+1
-                    ##PROBABLE ERROR IN HERE##
-                    ero[i+a][j+b] = 0
-            #If no pixel match just pass
-            else:
-                #Miss
-                miss=miss+1
-                pass
+    #We copy the image to the padded one
+    padded_image[pad_height:padded_image.shape[0] - pad_height, pad_width:padded_image.shape[1] - pad_width] = inImage
 
-    #Print the number of fits, hits, and misses
-    print(str(fit) + '\n' + str(hit) + '\n' + str(miss))
+    for row in range(M):
+        for col in range(N):
 
-    return ero
+            crop = np.array(padded_image[row:P+row,col:Q+col])
 
+            if (crop.all() == SE.all()):
+                centeredRow = int(row + centerDiffRow)
+                centeredCol = int(col + centerDiffCol)
+                outImage[centeredRow,centeredCol] = 1
+
+    return outImage
+
+def dilate (inImage, SE, center=[]):
+
+    M = inImage.shape[0]
+    N = inImage.shape[1]
+    
+    if (SE.ndim == 1):
+        P = SE.shape[0]
+        Q = 1
+    else:
+        P = SE.shape[0]
+        Q = SE.shape[1]
+
+    if (not center):
+        center = [int(np.floor(P/2) + 1), int(np.floor(Q/2) + 1)]
+    print(center)
+
+    centerDiffRow = np.floor(P/2) + 1 - center[0]
+    centerDiffCol = np.floor(Q/2) + 1 - center[1]
+
+    print(centerDiffRow)
+    print(centerDiffCol)
+
+    outImage = np.zeros(inImage.shape)
+ 
+    pad_height = int((P - 1) / 2)
+    pad_width = int((Q - 1) / 2)
+ 
+    padded_image = np.zeros((M + (2 * pad_height), N + (2 * pad_width)))
+
+    #We copy the image to the padded one
+    padded_image[pad_height:padded_image.shape[0] - pad_height, pad_width:padded_image.shape[1] - pad_width] = inImage
+
+    for row in range(M):
+        for col in range(N):
+
+            crop = np.array(padded_image[row:P+row,col:Q+col])
+            if (crop[center[0],center[1]] == SE[center[0],center[1]]):
+                centeredRow = int(row + centerDiffRow)
+                centeredCol = int(col + centerDiffCol)
+                outImage[centeredRow:P+centeredRow,centeredCol:Q+centeredCol] = 1
+
+    return outImage
+
+
+def opening (inImage, SE, center=[]):
+
+    inImage1 = erode (inImage, SE, center)
+
+    outImage = dilate (inImage1, SE, center)
+
+    return outImage
+
+
+def closing (inImage, SE, center=[]):
+
+    inImage1 = dilate (inImage, SE, center)
+
+    outImage = erode (inImage1, SE, center)
+
+    return outImage
+
+
+def hit_or_miss (inImage, objSEj, bgSE, center=[]):
+
+    
+
+    return outImage
 # 3.4 -----------------------------------------------------------------
 
 def main():
@@ -209,10 +255,11 @@ def main():
     bfly = io.imread(filename, as_gray=True)
 
     #Black and white image
-    filename = os.path.join(imgPath, 'bin.png')
+    filename = os.path.join(imgPath, 'bw.jpg')
     bw = io.imread(filename, as_gray=True)
     thresh = threshold_otsu(bw)
     bw = bw > thresh
+    bw = bw * 1
 
     #bfly = adjustIntensity(bfly, [10,100], [0,1])
 
@@ -231,16 +278,26 @@ def main():
     #bfly = highBoost(bfly, 1, "gaussian", 1)
     #bfly = highBoost(bfly, -1, "median", 1)
 
-    se = [[0,1,0],
-          [1,1,1],
-          [0,1,0]]
+    # se = np.array([[1,1,1],
+    #                [1,1,1],
+    #                [1,1,1]])
 
-    erode(bw,se)
+    se = np.array([[1,1,1,1,1,1,1],
+                    [1,1,1,1,1,1,1],
+                    [1,1,1,1,1,1,1],
+                    [1,1,1,1,1,1,1],
+                    [1,1,1,1,1,1,1],
+                    [1,1,1,1,1,1,1],
+                    [1,1,1,1,1,1,1]])
+    
+    center = [6,6]
 
-    bfly = bfly / bfly.max()
-    # io.imshow(bfly2, vmin=0, vmax=255) 
-    # io.show()
-    io.imsave(os.path.join(imgPathOut, 'bflyOut.jpg'), bfly)
+    #bw = erode(bw,se,center)
+
+    bw = dilate(bw,se,center)
+    
+    #bfly = bfly / bfly.max()
+    #io.imsave(os.path.join(imgPathOut, 'bflyOut.jpg'), bfly)
     io.imsave(os.path.join(imgPathOut, 'bwOut.jpg'), bw)
 
 
