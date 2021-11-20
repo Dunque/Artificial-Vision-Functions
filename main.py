@@ -1,13 +1,9 @@
 import os
-import re
 import numpy as np
-from natsort import natsorted, ns
-from skimage.util import img_as_uint
 from skimage.color import rgb2gray
-from skimage import data, exposure, img_as_float, io, color
-import matplotlib.pyplot as plt
+from skimage import data, exposure, io
 from skimage.filters import threshold_otsu
-import math
+import scipy
 
 imgPath = "img/"
 imgPathOut = "out/"
@@ -147,6 +143,9 @@ def erode (inImage, SE, center=[]):
         P = SE.shape[0]
         Q = SE.shape[1]
 
+    if (center and (center[0] > P or center[1] > Q)):
+        raise "Error: given center is out of the SE"
+
     if (not center):
         center = [int(np.floor(P/2) + 1), int(np.floor(Q/2) + 1)]
     print(center)
@@ -190,6 +189,9 @@ def dilate (inImage, SE, center=[]):
     else:
         P = SE.shape[0]
         Q = SE.shape[1]
+
+    if (center and (center[0] > P or center[1] > Q)):
+        raise "Error: given center is out of the SE"
 
     if (not center):
         center = [int(np.floor(P/2) + 1), int(np.floor(Q/2) + 1)]
@@ -260,13 +262,159 @@ def hit_or_miss (inImage, objSE, bgSE, center=[]):
         outImage[i] = 1
 
     return outImage
+
 # 3.4 -----------------------------------------------------------------
+
+def gradientImage (inImage, operator):
+
+    if (operator == "Roberts"):
+
+        Gx = np.array([[-1, 0], 
+                       [ 0, 1]])
+
+        Gy = np.array([[ 0, -1], 
+                       [ 1, 0 ]])
+
+        # io.imsave(os.path.join(imgPathOut, 'gx.jpg'), filterImage(inImage, Gx))
+        # io.imsave(os.path.join(imgPathOut, 'gy.jpg'), filterImage(inImage, Gy))
+        
+        return [filterImage(inImage, Gx) , filterImage(inImage, Gy)]
+
+    elif (operator == "CentralDiff"):
+
+        Gx = np.array([-1, 0, 1])
+
+        Gy = Gx.transpose()
+
+        # io.imsave(os.path.join(imgPathOut, 'gx.jpg'), filterImage(inImage, Gx))
+        # io.imsave(os.path.join(imgPathOut, 'gy.jpg'), filterImage(inImage, Gy))
+        
+        return [filterImage(inImage, Gx) , filterImage(inImage, Gy)]
+
+    elif (operator == "Prewitt"):
+
+        Gx = np.array([[-1, 0, 1], 
+                       [-1, 0, 1], 
+                       [-1, 0, 1]])
+
+        Gy = np.array([[-1, -1, -1], 
+                       [ 0,  0,  0], 
+                       [ 1,  1,  1]])
+
+        # io.imsave(os.path.join(imgPathOut, 'gx.jpg'), filterImage(inImage, Gx))
+        # io.imsave(os.path.join(imgPathOut, 'gy.jpg'), filterImage(inImage, Gy))
+        
+        return [filterImage(inImage, Gx) , filterImage(inImage, Gy)]
+
+    elif (operator == "Sobel"):
+
+        Gx = np.array([[-1, 0, 1], 
+                       [-2, 0, 2], 
+                       [-1, 0, 1]])
+
+        Gy = np.array([[-1, -2, -1], 
+                       [ 0,  0,  0], 
+                       [ 1,  2,  1]])
+
+        # io.imsave(os.path.join(imgPathOut, 'gx.jpg'), filterImage(inImage, Gx))
+        # io.imsave(os.path.join(imgPathOut, 'gy.jpg'), filterImage(inImage, Gy))
+        
+        return [filterImage(inImage, Gx) , filterImage(inImage, Gy)]
+
+    else:
+        raise Exception("Invalid method, it should be gaussian or median")
+
+
+def edgeCanny (inImage, sigma, tlow, thigh):
+
+    #Noise Reduction
+
+    outImage = gaussianFilter (inImage, sigma)
+
+    #Gradient
+
+    [Jx,Jy] = gradientImage (outImage, "Sobel")
+
+    #Suppression
+
+    M = outImage.shape[0]
+    N = outImage.shape[1]
+ 
+    Em = np.zeros(inImage.shape)
+    Eo = np.zeros(inImage.shape)
+ 
+    for row in range(M):
+        for col in range(N):
+            Em[row, col] = np.sqrt( pow(Jx[row, col],2) + pow(Jy[row, col],2) )
+    
+    io.imsave(os.path.join(imgPathOut, 'em.jpg'), Em)
+    Em = Em / Em.max() * 255
+    Eo = np.arctan2( Jy, Jx )
+
+    #Threshold
+
+    outImage3 = np.zeros(inImage.shape)
+
+    #arctan values to angles conversion
+    angle = Eo * 180. / np.pi
+    angle[angle < 0] += 180
+
+    for row in range(M):
+        for col in range(N):
+            try:
+                q = 255
+                r = 255
+
+                #angle 0
+                if (0 <= angle[row,col] < 22.5) or (157.5 <= angle[row,col] <= 180):
+                    q = Em[row, col+1]
+                    r = Em[row, col-1]
+                #angle 45
+                elif (22.5 <= angle[row,col] < 67.5):
+                    q = Em[row+1, col-1]
+                    r = Em[row-1, col+1]
+                #angle 90
+                elif (67.5 <= angle[row,col] < 112.5):
+                    q = Em[row+1, col]
+                    r = Em[row-1, col]
+                #angle 135
+                elif (112.5 <= angle[row,col] < 157.5):
+                    q = Em[row-1, col-1]
+                    r = Em[row+1, col+1]
+
+                if (Em[row,col] >= q) and (Em[row,col] >= r):
+                    outImage3[row,col] = Em[row,col]
+                else:
+                    outImage3[row,col] = 0
+
+            except IndexError as e:
+                pass
+
+    #Hysteresis
+
+    for row in range(M):
+        for col in range(N):
+            if (outImage3[row,col] <= tlow):
+                try:
+                    if ((outImage3[row+1, col-1] <= thigh) or (outImage3[row+1, col] <= thigh) or (outImage3[row+1, col+1] <= thigh)
+                        or (outImage3[row, col-1] <= thigh) or (outImage3[row, col+1] <= thigh)
+                        or (outImage3[row-1, col-1] <= thigh) or (outImage3[row-1, col] <= thigh) or (outImage3[row-1, col+1] <= thigh)):
+                        outImage3[row, col] = thigh
+                    else:
+                        outImage3[row, col] = 0
+
+                except IndexError as e:
+                    pass
+
+    return 255 - outImage3
+# ---------------------------------------------------------------------
 
 def main():
 
     #Greyscale image
     filename = os.path.join(imgPath, 'bfly.jpeg')
-    bfly = io.imread(filename, as_gray=True)
+    #bfly = io.imread(filename, as_gray=True)
+    bfly = rgb2gray(data.astronaut())
 
     #Black and white image
     filename = os.path.join(imgPath, 'bw.jpg')
@@ -308,11 +456,20 @@ def main():
 
     #bw = erode(bw,se,center)
 
-    bw = dilate(bw,se,center)
+    #bw = dilate(bw,se,center)
+
+    #bfly = gradientImage (bfly, "Roberts")
+    #bfly = gradientImage (bfly, "CentralDiff")
+    #bfly = gradientImage (bfly, "Prewitt")
+    #bfly = gradientImage (bfly, "Sobel")
+
+    # bfly = edgeCanny(bfly, 0.4, 25, 255)
     
+    io.imsave(os.path.join(imgPathOut, 'sciConv.jpg'), scipy.signal.convolve(bfly, np.array([-1, 0, 1]), mode='full', method='direct'))
+    io.imsave(os.path.join(imgPathOut, 'myConv.jpg'), filterImage(bfly, np.array([-1, 0, 1])))
     #bfly = bfly / bfly.max()
-    #io.imsave(os.path.join(imgPathOut, 'bflyOut.jpg'), bfly)
-    io.imsave(os.path.join(imgPathOut, 'bwOut.jpg'), bw)
+    io.imsave(os.path.join(imgPathOut, 'bflyOut.jpg'), bfly)
+    #io.imsave(os.path.join(imgPathOut, 'bwOut.jpg'), bw)
 
 
 if __name__ =='__main__':
