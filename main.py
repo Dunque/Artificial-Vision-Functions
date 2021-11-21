@@ -1,14 +1,16 @@
 import os
 import numpy as np
+from sklearn.preprocessing import minmax_scale
 from skimage.color import rgb2gray
-from skimage import data, exposure, io
+from skimage import data, exposure, io, morphology
 from skimage.filters import threshold_otsu
-import scipy
+from skimage.exposure import rescale_intensity
 
 imgPath = "img/"
 imgPathOut = "out/"
 
 # 3.1 -----------------------------------------------------------------
+
 def adjustIntensity (inImage, inRange = [], outRange = [0, 1]):
 
     if (not inRange):
@@ -40,6 +42,7 @@ def equalizeIntensity (inImage, nBins=256):
     return out.reshape(inImage.shape)
 
 # 3.2 -----------------------------------------------------------------
+
 def filterImage(inImage, kernel):
     
     M = inImage.shape[0]
@@ -59,7 +62,7 @@ def filterImage(inImage, kernel):
  
     padded_image = np.zeros((M + (2 * pad_height), N + (2 * pad_width)))
 
-    #We copy the image to the padded one
+    #Copy the image to the padded one
     padded_image[pad_height:padded_image.shape[0] - pad_height, pad_width:padded_image.shape[1] - pad_width] = inImage
  
     for row in range(M):
@@ -97,23 +100,35 @@ def medianFilter (inImage, filterSize):
     M = inImage.shape[0]
     N = inImage.shape[1]
 
-    indexer = filterSize // 2
+    center = [int(np.floor(filterSize/2)), int(np.floor(filterSize/2))]
 
-    window = [
-        (i, j)
-        for i in range(-indexer, filterSize-indexer)
-        for j in range(-indexer, filterSize-indexer)
-    ]
-    index = len(window) // 2
+    if (filterSize // 2 == 0):
+        centerUp = filterSize-center[1]
+        centerDown = filterSize-center[1]-1
+        centerL = filterSize-center[0]
+        centerR = filterSize-center[0]-1
+    else:
+        centerUp = filterSize-center[1]
+        centerDown = filterSize-center[1]
+        centerL = filterSize-center[0]
+        centerR = filterSize-center[0]
  
     outImage = np.zeros(inImage.shape)
  
     for row in range(M):
         for col in range(N):
-            outImage[row, col] = sorted(
-                0 if (min(row+a, col+b) < 0 or len(inImage) <= row+a or len(inImage[0]) <= col+b) 
-                else inImage[row+a][col+b] for a, b in window)[index]
- 
+            pixels = []
+            for i in range(row-centerL, row+centerR):
+                for j in range(col-centerUp, col+centerDown):
+
+                    try:
+                        pixels.append(inImage[i,j])
+
+                    except IndexError as e:
+                        pass
+
+            outImage[row, col] = np.median(pixels)
+            
     return outImage
 
 
@@ -126,11 +141,14 @@ def highBoost (inImage, A, method, param):
     else:
         raise Exception("Invalid method, it should be gaussian or median")
 
+    smooth = minmax_scale(smooth, feature_range=(0, 1), axis=0, copy=True)
+
     outImage = (A-1) * inImage + inImage - smooth
 
     return outImage
 
 # 3.3 -----------------------------------------------------------------
+
 def erode (inImage, SE, center=[]):
 
     M = inImage.shape[0]
@@ -144,24 +162,20 @@ def erode (inImage, SE, center=[]):
         Q = SE.shape[1]
 
     if (center and (center[0] > P or center[1] > Q)):
-        raise "Error: given center is out of the SE"
+        raise Exception("Given center is out of the SE")
 
     if (not center):
         center = [int(np.floor(P/2) + 1), int(np.floor(Q/2) + 1)]
-    print(center)
 
     centerDiffRow = np.floor(P/2) + 1 - center[0]
     centerDiffCol = np.floor(Q/2) + 1 - center[1]
 
-    print(centerDiffRow)
-    print(centerDiffCol)
-
-    outImage = np.zeros(inImage.shape)
+    outImage = np.zeros(inImage.shape,dtype=int)
  
     pad_height = int((P - 1) / 2)
     pad_width = int((Q - 1) / 2)
  
-    padded_image = np.zeros((M + (2 * pad_height), N + (2 * pad_width)))
+    padded_image = np.zeros((M + (2 * pad_height), N + (2 * pad_width)),dtype=int)
 
     #We copy the image to the padded one
     padded_image[pad_height:padded_image.shape[0] - pad_height, pad_width:padded_image.shape[1] - pad_width] = inImage
@@ -169,14 +183,23 @@ def erode (inImage, SE, center=[]):
     for row in range(M):
         for col in range(N):
 
-            crop = np.array(padded_image[row:P+row,col:Q+col])
+            allCheck = True
 
-            if (crop.all() == SE.all()):
+            crop = np.array(padded_image[row:P+row,col:Q+col], dtype=int)
+
+            for row2 in range(crop.shape[0]):
+                for col2 in range(crop.shape[1]):
+                    if (SE[row2,col2] == 1):
+                        if(crop[row2,col2] != 1):
+                            allCheck = False
+
+            if (allCheck):
                 centeredRow = int(row + centerDiffRow)
                 centeredCol = int(col + centerDiffCol)
                 outImage[centeredRow,centeredCol] = 1
 
     return outImage
+
 
 def dilate (inImage, SE, center=[]):
 
@@ -191,17 +214,13 @@ def dilate (inImage, SE, center=[]):
         Q = SE.shape[1]
 
     if (center and (center[0] > P or center[1] > Q)):
-        raise "Error: given center is out of the SE"
+        raise Exception("Given center is out of the SE")
 
     if (not center):
         center = [int(np.floor(P/2) + 1), int(np.floor(Q/2) + 1)]
-    print(center)
 
     centerDiffRow = np.floor(P/2) + 1 - center[0]
     centerDiffCol = np.floor(Q/2) + 1 - center[1]
-
-    print(centerDiffRow)
-    print(centerDiffCol)
 
     outImage = np.zeros(inImage.shape)
  
@@ -248,22 +267,40 @@ def hit_or_miss (inImage, objSE, bgSE, center=[]):
     B = inImage
     Bc = 1 - inImage
 
-    if(objSE.len != bgSE.len or objSE.any() == bgSE.any()):
-        raise "Error: objSE and bgSE must not share ones in the same positions"
+    M = inImage.shape[0]
+    N = inImage.shape[1]
+    
+    if(objSE.shape != bgSE.shape):
+        raise Exception("objSE and bgSE must not share ones in the same positions")
+
+    for row in range(objSE.shape[0]):
+        for col in range(objSE.shape[1]):
+            if objSE[row,col] == bgSE[row,col] == 1:
+                raise Exception("objSE and bgSE must not share ones in the same positions")
 
     out1 = erode (B, objSE, center)
     out2 = erode (Bc, bgSE, center)
 
-    outInd = np.intersect1d(out1, out2, return_indices=True)
+    # out1 = morphology.erosion(B, objSE)
+    # out2 = morphology.erosion(Bc, bgSE)
+
+    io.imsave(os.path.join(imgPathOut, 'out1BIEN.jpg'), morphology.erosion(B, objSE))
+    io.imsave(os.path.join(imgPathOut, 'out2BIEN.jpg'), morphology.erosion(Bc, bgSE))
+    io.imsave(os.path.join(imgPathOut, 'out1.jpg'), out1)
+    io.imsave(os.path.join(imgPathOut, 'out2.jpg'), out2)
 
     outImage = np.zeros(inImage.shape)
 
-    for i in outInd:
-        outImage[i] = 1
+    for row in range(M):
+        for col in range(N):
+            if out1[row,col] == out2[row,col]:
+                outImage[row,col] = out1[row,col]
 
     return outImage
 
+
 # 3.4 -----------------------------------------------------------------
+
 
 def gradientImage (inImage, operator):
 
@@ -275,8 +312,8 @@ def gradientImage (inImage, operator):
         Gy = np.array([[ 0, -1], 
                        [ 1, 0 ]])
 
-        # io.imsave(os.path.join(imgPathOut, 'gx.jpg'), filterImage(inImage, Gx))
-        # io.imsave(os.path.join(imgPathOut, 'gy.jpg'), filterImage(inImage, Gy))
+        io.imsave(os.path.join(imgPathOut, 'robertsGx.jpg'), filterImage(inImage, Gx))
+        io.imsave(os.path.join(imgPathOut, 'robertsGy.jpg'), filterImage(inImage, Gy))
         
         return [filterImage(inImage, Gx) , filterImage(inImage, Gy)]
 
@@ -286,8 +323,8 @@ def gradientImage (inImage, operator):
 
         Gy = Gx.transpose()
 
-        # io.imsave(os.path.join(imgPathOut, 'gx.jpg'), filterImage(inImage, Gx))
-        # io.imsave(os.path.join(imgPathOut, 'gy.jpg'), filterImage(inImage, Gy))
+        io.imsave(os.path.join(imgPathOut, 'centralDiffGx.jpg'), filterImage(inImage, Gx))
+        io.imsave(os.path.join(imgPathOut, 'centralDiffGy.jpg'), filterImage(inImage, Gy))
         
         return [filterImage(inImage, Gx) , filterImage(inImage, Gy)]
 
@@ -301,8 +338,8 @@ def gradientImage (inImage, operator):
                        [ 0,  0,  0], 
                        [ 1,  1,  1]])
 
-        # io.imsave(os.path.join(imgPathOut, 'gx.jpg'), filterImage(inImage, Gx))
-        # io.imsave(os.path.join(imgPathOut, 'gy.jpg'), filterImage(inImage, Gy))
+        io.imsave(os.path.join(imgPathOut, 'prewittGx.jpg'), filterImage(inImage, Gx))
+        io.imsave(os.path.join(imgPathOut, 'prewittGy.jpg'), filterImage(inImage, Gy))
         
         return [filterImage(inImage, Gx) , filterImage(inImage, Gy)]
 
@@ -316,8 +353,8 @@ def gradientImage (inImage, operator):
                        [ 0,  0,  0], 
                        [ 1,  2,  1]])
 
-        # io.imsave(os.path.join(imgPathOut, 'gx.jpg'), filterImage(inImage, Gx))
-        # io.imsave(os.path.join(imgPathOut, 'gy.jpg'), filterImage(inImage, Gy))
+        io.imsave(os.path.join(imgPathOut, 'sobelGx.jpg'), filterImage(inImage, Gx))
+        io.imsave(os.path.join(imgPathOut, 'sobelGy.jpg'), filterImage(inImage, Gy))
         
         return [filterImage(inImage, Gx) , filterImage(inImage, Gy)]
 
@@ -407,69 +444,73 @@ def edgeCanny (inImage, sigma, tlow, thigh):
                     pass
 
     return 255 - outImage3
+
+
 # ---------------------------------------------------------------------
+
 
 def main():
 
     #Greyscale image
-    filename = os.path.join(imgPath, 'bfly.jpeg')
-    #bfly = io.imread(filename, as_gray=True)
-    bfly = rgb2gray(data.astronaut())
+    filename = os.path.join(imgPath, 'img1.jpeg')
+    #img1 = io.imread(filename, as_gray=True)
+    img1 = rgb2gray(data.astronaut())
 
     #Black and white image
-    filename = os.path.join(imgPath, 'bw.jpg')
-    bw = io.imread(filename, as_gray=True)
-    thresh = threshold_otsu(bw)
-    bw = bw > thresh
-    bw = bw * 1
+    filename = os.path.join(imgPath, 'input92.png')
+    bw2 = io.imread(filename, as_gray=True)
+    thresh = threshold_otsu(bw2)
+    bw2 = bw2 > thresh
+    bw2 = bw2 * 1
 
-    #bfly = adjustIntensity(bfly, [10,100], [0,1])
+    io.imsave(os.path.join(imgPathOut, 'adjustIntensity.jpg'), adjustIntensity(img1, [0.1,0.9], [0,1]))
 
-    #bfly = equalizeIntensity(bfly)
+    io.imsave(os.path.join(imgPathOut, 'equalizeIntensity.jpg'), equalizeIntensity(img1))
 
     kernel = np.array([[-1, -1, -1], 
                         [-1, 8, -1], 
                        [-1, -1, -1]])
+
+    io.imsave(os.path.join(imgPathOut, 'filterImage.jpg'), filterImage(img1, kernel))
+
+    io.imsave(os.path.join(imgPathOut, 'gaussianFilter.jpg'), gaussianFilter(img1,1))
+
+    io.imsave(os.path.join(imgPathOut, 'medianFilter.jpg'), medianFilter(img1,5))
+
+    io.imsave(os.path.join(imgPathOut, 'highBoostGaussian.jpg'), highBoost(img1, 5, "gaussian", 1))
+    io.imsave(os.path.join(imgPathOut, 'highBoostMedian.jpg'), highBoost(img1, 5, "median", 3))
+
+    se = np.array([[0,1,0],
+                   [1,1,1],
+                   [0,1,0]])
     
-    #bfly = filterImage(bfly, kernel)
+    center = [1,1]
 
-    #bfly = gaussianFilter(bfly,1)
+    io.imsave(os.path.join(imgPathOut, 'erode.jpg'), erode(bw2,se,center))
 
-    #bfly = medianFilter(bfly,5)
+    io.imsave(os.path.join(imgPathOut, 'dilate.jpg'), dilate(bw2,se,center))
 
-    #bfly = highBoost(bfly, 1, "gaussian", 1)
-    #bfly = highBoost(bfly, -1, "median", 1)
+    io.imsave(os.path.join(imgPathOut, 'opening.jpg'), opening(bw2,se,center))
 
-    # se = np.array([[1,1,1],
-    #                [1,1,1],
-    #                [1,1,1]])
+    io.imsave(os.path.join(imgPathOut, 'closing.jpg'), closing(bw2,se,center))
 
-    se = np.array([[1,1,1,1,1,1,1],
-                    [1,1,1,1,1,1,1],
-                    [1,1,1,1,1,1,1],
-                    [1,1,1,1,1,1,1],
-                    [1,1,1,1,1,1,1],
-                    [1,1,1,1,1,1,1],
-                    [1,1,1,1,1,1,1]])
+    objSE = np.array([[0,0,0],
+                      [1,1,0],
+                      [0,1,0]])
+
+    bgSE = np.array([[0,1,1],
+                     [0,0,1],
+                     [0,0,0]])
+
+
+    io.imsave(os.path.join(imgPathOut, 'HitOrMiss.jpg'), hit_or_miss(bw2,objSE,bgSE))
+
+    gradientImage (img1, "Roberts")
+    gradientImage (img1, "CentralDiff")
+    gradientImage (img1, "Prewitt")
+    gradientImage (img1, "Sobel")
     
-    center = [6,6]
-
-    #bw = erode(bw,se,center)
-
-    #bw = dilate(bw,se,center)
-
-    #bfly = gradientImage (bfly, "Roberts")
-    #bfly = gradientImage (bfly, "CentralDiff")
-    #bfly = gradientImage (bfly, "Prewitt")
-    #bfly = gradientImage (bfly, "Sobel")
-
-    # bfly = edgeCanny(bfly, 0.4, 25, 255)
-    
-    io.imsave(os.path.join(imgPathOut, 'sciConv.jpg'), scipy.signal.convolve(bfly, np.array([-1, 0, 1]), mode='full', method='direct'))
-    io.imsave(os.path.join(imgPathOut, 'myConv.jpg'), filterImage(bfly, np.array([-1, 0, 1])))
-    #bfly = bfly / bfly.max()
-    io.imsave(os.path.join(imgPathOut, 'bflyOut.jpg'), bfly)
-    #io.imsave(os.path.join(imgPathOut, 'bwOut.jpg'), bw)
+    io.imsave(os.path.join(imgPathOut, 'edgeCanny.jpg'), edgeCanny(img1, 0.4, 25, 255))
 
 
 if __name__ =='__main__':
