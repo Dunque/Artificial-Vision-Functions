@@ -47,7 +47,10 @@ def erode (inImage, SE, center=[]):
             if (allCheck):
                 centeredRow = int(row + centerDiffRow)
                 centeredCol = int(col + centerDiffCol)
-                outImage[centeredRow,centeredCol] = 1
+                try:
+                    outImage[centeredRow,centeredCol] = 1
+                except IndexError as e:
+                    pass
 
     return outImage
 
@@ -98,7 +101,10 @@ def dilate (inImage, SE, center=[]):
             if (anyCheck):
                 centeredRow = int(row + centerDiffRow)
                 centeredCol = int(col + centerDiffCol)
-                outImage[centeredRow,centeredCol] = 1
+                try:
+                    outImage[centeredRow,centeredCol] = 1
+                except IndexError as e:
+                    pass
 
     return outImage
 

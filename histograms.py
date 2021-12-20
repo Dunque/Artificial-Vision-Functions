@@ -25,8 +25,8 @@ def adjustIntensity (inImage, inRange = [], outRange = [0, 1]):
 def equalizeIntensity (inImage, nBins=256):
 
     hist, bin_centers = exposure.histogram(inImage, nBins)
-    img_cdf = hist.cumsum()
-    img_cdf = img_cdf / float(img_cdf[-1])
-    out = np.interp(inImage.flat, bin_centers, img_cdf)
+    img_cdf = hist.cumsum() # cumulative distribution function
+    img_cdf = img_cdf / float(img_cdf[-1]) #normalization
+    out = np.interp(inImage.flat, bin_centers, img_cdf) #lineal interpolation
 
     return out.reshape(inImage.shape)

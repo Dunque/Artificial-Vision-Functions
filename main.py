@@ -15,12 +15,16 @@ imgPathOut = "out/"
 def main():
 
     #Greyscale image
-    filename = os.path.join(imgPath, 'img1.jpeg')
+    filename = os.path.join(imgPath, 'circles.png')
     #img1 = io.imread(filename, as_gray=True)
     img1 = rgb2gray(data.astronaut())
 
+    filename2 = os.path.join(imgPath, 'gaussianFilter.png')
+    ker = io.imread(filename2, as_gray=True)
+    ker = rgb2gray(ker)
+
     #Black and white image
-    filename = os.path.join(imgPath, 'input92.png')
+    filename = os.path.join(imgPath, 'morph.png')
     bw2 = io.imread(filename, as_gray=True)
     thresh = threshold_otsu(bw2)
     bw2 = bw2 > thresh
@@ -29,9 +33,9 @@ def main():
     # 3.1 -----------------------------------------------------------------
 
 
-    io.imsave(os.path.join(imgPathOut, 'adjustIntensity.jpg'), adjustIntensity(img1, [0.1,0.9], [0,1]))
+    #io.imsave(os.path.join(imgPathOut, 'adjustIntensity.png'), adjustIntensity(img1, [0.1,0.9], [0,1]))
 
-    io.imsave(os.path.join(imgPathOut, 'equalizeIntensity.jpg'), equalizeIntensity(img1))
+    #io.imsave(os.path.join(imgPathOut, 'equalizeIntensity.png'), equalizeIntensity(img1,4))
 
 
     # 3.2 -----------------------------------------------------------------
@@ -41,14 +45,14 @@ def main():
                         [-1, 8, -1], 
                        [-1, -1, -1]])
 
-    io.imsave(os.path.join(imgPathOut, 'filterImage.jpg'), filterImage(img1, kernel))
+    #io.imsave(os.path.join(imgPathOut, 'filterImage.png'), filterImage(img1, kernel))
 
-    io.imsave(os.path.join(imgPathOut, 'gaussianFilter.jpg'), gaussianFilter(img1,1))
+    #io.imsave(os.path.join(imgPathOut, 'gaussianFilter.png'), gaussianFilter(img1,1.25))
 
-    io.imsave(os.path.join(imgPathOut, 'medianFilter.jpg'), medianFilter(img1,5))
+    #io.imsave(os.path.join(imgPathOut, 'medianFilter.png'), medianFilter(img1,15))
 
-    io.imsave(os.path.join(imgPathOut, 'highBoostGaussian.jpg'), highBoost(img1, 5, "gaussian", 1))
-    io.imsave(os.path.join(imgPathOut, 'highBoostMedian.jpg'), highBoost(img1, 5, "median", 3))
+    #io.imsave(os.path.join(imgPathOut, 'highBoostGaussian.png'), highBoost(ker, 2, "gaussian", 1.75))
+    #io.imsave(os.path.join(imgPathOut, 'highBoostMedian.png'), highBoost(img1, 5, "median", 3))
 
 
     # 3.3 -----------------------------------------------------------------
@@ -60,35 +64,35 @@ def main():
     
     center = [1,1]
 
-    io.imsave(os.path.join(imgPathOut, 'erode.jpg'), erode(bw2,se,center))
+    #io.imsave(os.path.join(imgPathOut, 'erode.png'), erode(bw2,se,center))
 
-    io.imsave(os.path.join(imgPathOut, 'dilate.jpg'), dilate(bw2,se,center))
+    #io.imsave(os.path.join(imgPathOut, 'dilate.png'), dilate(bw2,se,center))
 
-    io.imsave(os.path.join(imgPathOut, 'opening.jpg'), opening(bw2,se,center))
+    #io.imsave(os.path.join(imgPathOut, 'opening.png'), opening(bw2,se,center))
 
-    io.imsave(os.path.join(imgPathOut, 'closing.jpg'), closing(bw2,se,center))
+    #io.imsave(os.path.join(imgPathOut, 'closing.png'), closing(bw2,se,center))
 
-    objSE = np.array([[0,0,0],
-                      [1,1,0],
+    objSE = np.array([[0,1,0],
+                      [0,1,1],
                       [0,1,0]])
 
-    bgSE = np.array([[0,1,1],
-                     [0,0,1],
-                     [0,0,0]])
+    bgSE = np.array([[1,0,1],
+                     [0,0,0],
+                     [1,0,1]])
 
 
-    io.imsave(os.path.join(imgPathOut, 'HitOrMiss.jpg'), hit_or_miss(bw2,objSE,bgSE))
+    #io.imsave(os.path.join(imgPathOut, 'HitOrMiss.png'), hit_or_miss(bw2,objSE,bgSE))
 
 
     # 3.4 -----------------------------------------------------------------
 
 
-    gradientImage (img1, "Roberts")
-    gradientImage (img1, "CentralDiff")
-    gradientImage (img1, "Prewitt")
-    gradientImage (img1, "Sobel")
+    #gradientImage (img1, "Roberts")
+    #gradientImage (img1, "CentralDiff")
+    #gradientImage (img1, "Prewitt")
+    #gradientImage (img1, "Sobel")
     
-    io.imsave(os.path.join(imgPathOut, 'edgeCanny.jpg'), edgeCanny(img1, 0.4, 25, 255))
+    io.imsave(os.path.join(imgPathOut, 'edgeCanny.png'), edgeCanny(img1, 0.4, 25, 100))
 
 
 if __name__ =='__main__':
